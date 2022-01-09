@@ -1,0 +1,158 @@
+/*
+SPDX-License-Identifier: Apache-2.0
+*/
+
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+
+	"github.com/hyperledger/fabric-contract-api-go/contractapi"
+)
+
+// SmartContract provides functions for managing a car
+type SmartContract struct {
+	contractapi.Contract
+}
+
+// Car describes basic details of what makes up a car
+type Car struct {
+	Owner  string `json:"owner"`
+	Birth string `json:"birth"`
+	Register  string `json:"register"`
+	Vaccin  string `json:"vaccin"`
+	Nbr  string `json:"nbr"`
+	Lot  string `json:"lot"`
+}
+
+// QueryResult structure used for handling result of query
+type QueryResult struct {
+	Key    string `json:"Key"`
+	Record *Car
+}
+
+// InitLedger adds a base set of cars to the ledger
+func (s *SmartContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
+	cars := []Car{
+		Car{ Owner: "Tomoko", Register: "8086363", Birth: "121293", 
+		Vaccin: "modrna", Nbr: "2", Lot: "lot"},
+	}
+
+	for i, car := range cars {
+		carAsBytes, _ := json.Marshal(car)
+		err := ctx.GetStub().PutState("PASS"+strconv.Itoa(i), carAsBytes)
+
+		if err != nil {
+			return fmt.Errorf("Failed to put to world state. %s", err.Error())
+		}
+	}
+
+	return nil
+}
+
+// CreateCar adds a new car to the world state with given details
+func (s *SmartContract) CreateCars(ctx contractapi.TransactionContextInterface, carNumber string, make string, model string, owner string) error {
+	car := Car{
+		Owner:  owner,
+	}
+
+	carAsBytes, _ := json.Marshal(car)
+
+	return ctx.GetStub().PutState(carNumber, carAsBytes)
+}
+
+func (s *SmartContract) CreatePass(ctx contractapi.TransactionContextInterface, registerNbr string ,owner string, register string, birth string, vaccinName string, vaccinNbr string, lotNbr string) error {
+	
+	car := Car{
+		Owner:  owner,
+		Register:  register,
+		Birth:  birth,
+		Vaccin:  vaccinName,
+		Nbr:  vaccinNbr,
+		Lot:  lotNbr,
+	}
+
+	carAsBytes, _ := json.Marshal(car)
+
+	return ctx.GetStub().PutState(registerNbr, carAsBytes)
+}
+
+// QueryCar returns the passeports stored in the world state with given id
+func (s *SmartContract) QueryPass(ctx contractapi.TransactionContextInterface, passNumber string) (*Car, error) {
+	carAsBytes, err := ctx.GetStub().GetState(passNumber)
+
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read from world state. %s", err.Error())
+	}
+
+	if carAsBytes == nil {
+		return nil, fmt.Errorf("%s does not exist", passNumber)
+	}
+
+	car := new(Car)
+	_ = json.Unmarshal(carAsBytes, car)
+
+	return car, nil
+}
+
+// QueryAllCars returns all cars found in world state
+func (s *SmartContract) QueryAllData(ctx contractapi.TransactionContextInterface) ([]QueryResult, error) {
+	startKey := ""
+	endKey := ""
+
+	resultsIterator, err := ctx.GetStub().GetStateByRange(startKey, endKey)
+
+	if err != nil {
+		return nil, err
+	}
+	defer resultsIterator.Close()
+
+	results := []QueryResult{}
+
+	for resultsIterator.HasNext() {
+		queryResponse, err := resultsIterator.Next()
+
+		if err != nil {
+			return nil, err
+		}
+
+		car := new(Car)
+		_ = json.Unmarshal(queryResponse.Value, car)
+
+		queryResult := QueryResult{Key: queryResponse.Key, Record: car}
+		results = append(results, queryResult)
+	}
+
+	return results, nil
+}
+
+// ChangeCarOwner updates the owner field of car with given id in world state
+//func (s *SmartContract) ChangeCarOwner(ctx contractapi.TransactionContextInterface, carNumber string, newOwner string) error {
+	//car, err := s.QueryCar(ctx, carNumber)
+
+	//if err != nil {
+	//	return err
+	//}
+
+	//car.Owner = newOwner
+
+	//carAsBytes, _ := json.Marshal(car)
+
+	//return ctx.GetStub().PutState(carNumber, carAsBytes)
+//}
+
+func main() {
+
+	chaincode, err := contractapi.NewChaincode(new(SmartContract))
+
+	if err != nil {
+		fmt.Printf("Error create fabcar chaincode: %s", err.Error())
+		return
+	}
+
+	if err := chaincode.Start(); err != nil {
+		fmt.Printf("Error starting fabcar chaincode: %s", err.Error())
+	}
+}
